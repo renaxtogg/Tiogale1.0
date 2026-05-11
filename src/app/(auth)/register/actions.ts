@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { getAppUrl } from "@/lib/utils/url";
 import { redirect } from "next/navigation";
 import type { ActionResult } from "@/types";
 
@@ -26,11 +27,11 @@ export async function signUp(
 
   const supabase = await createClient();
 
-  const { error } = await supabase.auth.signUp({
+  const { data, error } = await supabase.auth.signUp({
     email,
     password,
     options: {
-      emailRedirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/api/auth/callback`,
+      emailRedirectTo: `${getAppUrl()}/api/auth/callback`,
     },
   });
 
@@ -38,6 +39,11 @@ export async function signUp(
     return { error: error.message };
   }
 
-  // Supabase may auto-confirm in dev mode — redirect to dashboard or login
-  redirect("/dashboard");
+  // Session present → Supabase auto-confirmed (e.g. email confirmation disabled).
+  // No session → confirmation email sent; redirect to a holding page.
+  if (data.session) {
+    redirect("/dashboard");
+  }
+
+  redirect("/register/verify-email");
 }
