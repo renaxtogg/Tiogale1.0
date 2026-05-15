@@ -10,13 +10,17 @@ export async function createGasto(
   _prev: FormState,
   formData: FormData
 ): Promise<FormState> {
-  const obra_id     = formData.get("obra_id") as string;
-  const categoria   = formData.get("categoria") as string;
-  const descripcion = formData.get("descripcion") as string;
-  const monto_raw   = formData.get("monto") as string;
-  const fecha       = formData.get("fecha") as string;
-  const entidad_id  = formData.get("entidad_id") as string;
-  const comprobante = formData.get("comprobante") as string;
+  const obra_id        = formData.get("obra_id") as string;
+  const categoria      = formData.get("categoria") as string;
+  const descripcion    = formData.get("descripcion") as string;
+  const monto_raw      = formData.get("monto") as string;
+  const fecha          = formData.get("fecha") as string;
+  const entidad_id     = formData.get("entidad_id") as string;
+  const rubro_id       = formData.get("rubro_id") as string;
+  const comprobante    = formData.get("comprobante") as string;
+  const unidad         = formData.get("unidad") as string;
+  const cantidad_raw   = formData.get("cantidad") as string;
+  const p_unit_raw     = formData.get("precio_unitario") as string;
 
   const fieldErrors = collectErrors({
     obra_id:     required(obra_id, "Obra"),
@@ -30,12 +34,16 @@ export async function createGasto(
   const supabase = await createClient();
   const { error } = await supabase.from("gastos").insert({
     obra_id,
-    categoria:   categoria as CategoriaGasto,
-    descripcion: descripcion.trim(),
-    monto:       Number(monto_raw),
+    categoria:       categoria as CategoriaGasto,
+    descripcion:     descripcion.trim(),
+    monto:           Number(monto_raw),
     fecha,
-    entidad_id:  entidad_id || null,
-    comprobante: comprobante?.trim() || null,
+    entidad_id:      entidad_id || null,
+    rubro_id:        rubro_id || null,
+    comprobante:     comprobante?.trim() || null,
+    unidad:          unidad?.trim() || null,
+    cantidad:        cantidad_raw ? Number(cantidad_raw) : null,
+    precio_unitario: p_unit_raw ? Number(p_unit_raw) : null,
   });
 
   if (error) return { error: error.message };

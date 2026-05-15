@@ -1,10 +1,14 @@
 import { type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import type { ReactNode } from "react";
 
 interface EmptyStateProps {
   icon?: LucideIcon;
   title: string;
   description?: string;
+  /** Render any node as the CTA (e.g. a Button with Link). */
+  action?: ReactNode;
+  /** Legacy: text label + click handler */
   actionLabel?: string;
   onAction?: () => void;
 }
@@ -13,6 +17,7 @@ export function EmptyState({
   icon: Icon,
   title,
   description,
+  action,
   actionLabel,
   onAction,
 }: EmptyStateProps) {
@@ -27,7 +32,8 @@ export function EmptyState({
       {description && (
         <p className="mt-1 max-w-sm text-sm text-muted-foreground">{description}</p>
       )}
-      {actionLabel && onAction && (
+      {action && <div className="mt-6">{action}</div>}
+      {!action && actionLabel && onAction && (
         <Button onClick={onAction} className="mt-6" size="sm">
           {actionLabel}
         </Button>

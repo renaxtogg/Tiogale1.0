@@ -12,15 +12,20 @@ import {
 } from "@/components/ui/table";
 import { DeleteButton } from "@/components/shared/delete-button";
 import {
-  Plus, Receipt, Award, TrendingUp, TrendingDown, Minus,
+  Plus, Receipt, Award, TrendingUp, TrendingDown, Minus, FileText,
 } from "lucide-react";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { calcularResumenFinanciero } from "@/lib/calculations";
+import { enrichRubros, enrichCapitulos, calcularTotalPresupuesto } from "@/lib/budget";
+import { diferenciaColorClass } from "@/lib/comparisons";
 import {
   ESTADO_OBRA_LABELS, TIPO_CONTRATO_LABELS,
   CATEGORIA_GASTO_LABELS, ESTADO_CERT_LABELS, TIPO_CERT_LABELS,
 } from "@/types";
-import type { EstadoObra, CategoriaGasto, EstadoCert, TipoCert } from "@/types";
+import type {
+  EstadoObra, CategoriaGasto, EstadoCert, TipoCert,
+  RubroRow, CapituloRow, AnalisisCostoItemRow,
+} from "@/types";
 import { deleteObra, deleteGasto, deleteCertificacion } from "./actions";
 import type { Metadata } from "next";
 
@@ -54,6 +59,7 @@ export default async function ObraDetailPage({
     { data: obra, error },
     { data: gastos },
     { data: certificaciones },
+    { data: presupuestos },
   ] = await Promise.all([
     supabase
       .from("obras")
@@ -70,25 +76,46 @@ export default async function ObraDetailPage({
       .select("*")
       .eq("obra_id", id)
       .order("numero"),
+    supabase
+      .from("presupuestos")
+      .select(`
+        id, nombre, version, estado,
+        capitulos(
+          id, presupuesto_id, codigo, nombre, orden, created_at, updated_at,
+          rubros(
+            id, capitulo_id, catalogo_rubro_id, codigo, nombre,
+            unidad, cantidad, precio_unitario, tipo_ejecucion, orden,
+            created_at, updated_at,
+            analisis_costo_items(id, rubro_id, tipo, descripcion, unidad, cantidad, precio_unitario, created_at, updated_at)
+          )
+        )
+      `)
+      .eq("obra_id", id)
+      .order("version"),
   ]);
 
   if (error || !obra) notFound();
 
-  const resumen = calcularResumenFinanciero(
-    obra,
-    gastos ?? [],
-    certificaciones ?? []
-  );
-
+  const resumen = calcularResumenFinanciero(obra, gastos ?? [], certificaciones ?? []);
   const cliente = obra.entidades as unknown as { nombre: string; email?: string; telefono?: string } | null;
 
-  const ResultIcon =
-    resumen.resultado > 0
-      ? TrendingUp
-      : resumen.resultado < 0
-      ? TrendingDown
-      : Minus;
+  // Compute presupuesto totals
+  const presupuestoRows = (presupuestos ?? []).map((p) => {
+    const caps = (p.capitulos ?? []) as unknown as (CapituloRow & {
+      rubros: (RubroRow & { analisis_costo_items: AnalisisCostoItemRow[] })[];
+    })[];
+    const acuMap   = new Map<string, AnalisisCostoItemRow[]>();
+    const rubroMap = new Map<string, ReturnType<typeof enrichRubros>[number][]>();
+    for (const cap of caps) {
+      for (const r of cap.rubros ?? []) acuMap.set(r.id, r.analisis_costo_items ?? []);
+      rubroMap.set(cap.id, enrichRubros((cap.rubros ?? []) as RubroRow[], acuMap));
+    }
+    const enrichedCaps = enrichCapitulos(caps as CapituloRow[], rubroMap);
+    return { ...p, total: calcularTotalPresupuesto(enrichedCaps) };
+  });
 
+  const ResultIcon =
+    resumen.resultado > 0 ? TrendingUp : resumen.resultado < 0 ? TrendingDown : Minus;
   const resultColor =
     resumen.resultado > 0
       ? "text-emerald-600"
@@ -102,6 +129,12 @@ export default async function ObraDetailPage({
       description={obra.descripcion ?? undefined}
       actions={
         <div className="flex gap-2">
+          <Button variant="outline" size="sm" asChild>
+            <Link href={`/presupuestos/nuevo?obra_id=${obra.id}`}>
+              <FileText className="h-4 w-4" />
+              Nuevo presupuesto
+            </Link>
+          </Button>
           <Button variant="outline" size="sm" asChild>
             <Link href={`/gastos/nuevo?obra_id=${obra.id}`}>
               <Receipt className="h-4 w-4" />
@@ -146,12 +179,10 @@ export default async function ObraDetailPage({
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="pb-2">
-            <CardDescription>Presupuesto aprobado</CardDescription>
+            <CardDescription>Presupuesto base aprobado</CardDescription>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold">
-              {formatCurrency(resumen.presupuesto_aprobado)}
-            </p>
+            <p className="text-2xl font-bold">{formatCurrency(resumen.presupuesto_aprobado)}</p>
           </CardContent>
         </Card>
 
@@ -160,9 +191,7 @@ export default async function ObraDetailPage({
             <CardDescription>Gastos reales</CardDescription>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold">
-              {formatCurrency(resumen.total_gastos)}
-            </p>
+            <p className="text-2xl font-bold">{formatCurrency(resumen.total_gastos)}</p>
             {resumen.presupuesto_aprobado > 0 && (
               <p className="text-xs text-muted-foreground mt-1">
                 {((resumen.total_gastos / resumen.presupuesto_aprobado) * 100).toFixed(1)}% del presupuesto
@@ -176,9 +205,7 @@ export default async function ObraDetailPage({
             <CardDescription>Total certificado</CardDescription>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold">
-              {formatCurrency(resumen.total_certificado)}
-            </p>
+            <p className="text-2xl font-bold">{formatCurrency(resumen.total_certificado)}</p>
             {resumen.presupuesto_aprobado > 0 && (
               <p className="text-xs text-muted-foreground mt-1">
                 {((resumen.total_certificado / resumen.presupuesto_aprobado) * 100).toFixed(1)}% del presupuesto
@@ -194,9 +221,7 @@ export default async function ObraDetailPage({
           <CardContent>
             <div className={`flex items-center gap-1 ${resultColor}`}>
               <ResultIcon className="h-5 w-5" />
-              <p className="text-2xl font-bold">
-                {formatCurrency(Math.abs(resumen.resultado))}
-              </p>
+              <p className="text-2xl font-bold">{formatCurrency(Math.abs(resumen.resultado))}</p>
             </div>
             <p className="text-xs text-muted-foreground mt-1">
               Margen: {resumen.margen_porcentaje.toFixed(1)}%
@@ -204,6 +229,54 @@ export default async function ObraDetailPage({
           </CardContent>
         </Card>
       </div>
+
+      {/* ── Presupuestos vinculados ───────────────────────────────────── */}
+      {presupuestoRows.length > 0 && (
+        <div className="space-y-3">
+          <h3 className="text-lg font-semibold">Presupuestos</h3>
+          <div className="rounded-md border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Nombre</TableHead>
+                  <TableHead>Versión</TableHead>
+                  <TableHead>Estado</TableHead>
+                  <TableHead className="text-right">Total presupuestado</TableHead>
+                  <TableHead className="text-right">vs. Gastos reales</TableHead>
+                  <TableHead className="w-20" />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {presupuestoRows.map((p) => {
+                  const dif = p.total - resumen.total_gastos;
+                  return (
+                    <TableRow key={p.id}>
+                      <TableCell className="font-medium">{p.nombre}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">v{p.version}</TableCell>
+                      <TableCell>
+                        <Badge variant={p.estado === "aprobado" ? "success" : "secondary"} className="text-xs">
+                          {p.estado === "aprobado" ? "Aprobado" : "Borrador"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-sm font-semibold">
+                        {formatCurrency(p.total)}
+                      </TableCell>
+                      <TableCell className={`text-right font-mono text-sm font-semibold ${diferenciaColorClass(dif)}`}>
+                        {dif >= 0 ? "+" : ""}{formatCurrency(dif)}
+                      </TableCell>
+                      <TableCell>
+                        <Button variant="ghost" size="sm" asChild>
+                          <Link href={`/presupuestos/${p.id}`}>Ver</Link>
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
+        </div>
+      )}
 
       {/* ── Gastos ───────────────────────────────────────────────────── */}
       <div className="space-y-3">
@@ -245,9 +318,7 @@ export default async function ObraDetailPage({
                     <TableCell className="text-sm">
                       {CATEGORIA_GASTO_LABELS[g.categoria as CategoriaGasto]}
                     </TableCell>
-                    <TableCell className="text-sm max-w-xs truncate">
-                      {g.descripcion}
-                    </TableCell>
+                    <TableCell className="text-sm max-w-xs truncate">{g.descripcion}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">
                       {(g.entidades as unknown as { nombre: string } | null)?.nombre ?? "—"}
                     </TableCell>
@@ -321,11 +392,9 @@ export default async function ObraDetailPage({
                     <TableCell>
                       <Badge
                         variant={
-                          c.estado === "cobrada"
-                            ? "outline"
-                            : c.estado === "aprobada"
-                            ? "success"
-                            : "secondary"
+                          c.estado === "cobrada" ? "outline"
+                          : c.estado === "aprobada" ? "success"
+                          : "secondary"
                         }
                       >
                         {ESTADO_CERT_LABELS[c.estado as EstadoCert]}
@@ -349,7 +418,7 @@ export default async function ObraDetailPage({
       <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4">
         <h4 className="text-sm font-semibold text-destructive mb-2">Zona de peligro</h4>
         <p className="text-xs text-muted-foreground mb-3">
-          Eliminar la obra borrará también todos sus gastos, certificaciones y partidas.
+          Eliminar la obra borrará también todos sus gastos, certificaciones y presupuestos.
         </p>
         <DeleteButton
           action={deleteObra.bind(null, obra.id)}

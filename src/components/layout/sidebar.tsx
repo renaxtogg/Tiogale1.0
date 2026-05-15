@@ -10,17 +10,19 @@ import {
   Award,
   Users,
   Building2,
+  BookOpen,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Separator } from "@/components/ui/separator";
 
 const navItems = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/obras", label: "Obras", icon: FolderOpen },
-  { href: "/presupuestos", label: "Presupuestos", icon: FileText },
-  { href: "/gastos", label: "Gastos", icon: Receipt },
+  { href: "/dashboard",       label: "Dashboard",       icon: LayoutDashboard },
+  { href: "/obras",           label: "Obras",           icon: FolderOpen },
+  { href: "/presupuestos",    label: "Presupuestos",    icon: FileText },
+  { href: "/gastos",          label: "Gastos Reales",   icon: Receipt },
   { href: "/certificaciones", label: "Certificaciones", icon: Award },
-  { href: "/entidades", label: "Entidades", icon: Users },
+  { href: "/catalogo",        label: "Catálogo Rubros", icon: BookOpen },
+  { href: "/entidades",       label: "Entidades",       icon: Users },
 ];
 
 interface SidebarProps {

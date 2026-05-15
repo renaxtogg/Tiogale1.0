@@ -8,6 +8,7 @@ export type {
   TipoCert,
   EstadoCert,
   TipoMovimiento,
+  EstadoPresupuesto,
   ObraRow,
   EntidadRow,
   PartidaRow,
@@ -15,6 +16,12 @@ export type {
   GastoRow,
   CertificacionRow,
   MovimientoRow,
+  CatalogoRubroRow,
+  CatalogoAcuItemRow,
+  PresupuestoRow,
+  CapituloRow,
+  RubroRow,
+  AnalisisCostoItemRow,
 } from './supabase';
 
 // ─── Server Action state ───────────────────────────────────────────────────────
@@ -26,7 +33,6 @@ export type FormState = {
 
 // ─── Enriched query result types (common join shapes) ─────────────────────────
 
-/** Obra with aggregated financial totals (computed from related rows) */
 export type ObraConTotales = {
   id:                   string;
   nombre:               string;
@@ -38,20 +44,63 @@ export type ObraConTotales = {
   cliente_nombre:       string | null;
   total_gastos:         number;
   total_certificado:    number;
-  resultado:            number; // total_certificado - total_gastos
+  resultado:            number;
 };
 
-/** Gasto with obra name and entidad name for display */
 export type GastoConRelaciones = import('./supabase').GastoRow & {
   obra_nombre:    string | null;
   entidad_nombre: string | null;
+  rubro_nombre:   string | null;
 };
 
-/** Certificacion with obra name for display */
 export type CertificacionConObra = import('./supabase').CertificacionRow & {
   obra_nombre:          string | null;
   presupuesto_aprobado: number;
   tipo_contrato:        import('./supabase').TipoContrato;
+};
+
+// ─── Budget structure enriched types ──────────────────────────────────────────
+
+export type AcuItemConSubtotal = import('./supabase').AnalisisCostoItemRow & {
+  subtotal: number;
+};
+
+export type RubroConAcu = import('./supabase').RubroRow & {
+  subtotal:            number;
+  acu_total:           number;
+  analisis_costo_items: AcuItemConSubtotal[];
+};
+
+export type CapituloConRubros = import('./supabase').CapituloRow & {
+  subtotal: number;
+  rubros:   RubroConAcu[];
+};
+
+export type PresupuestoConDetalle = import('./supabase').PresupuestoRow & {
+  total:    number;
+  obra_nombre: string;
+  capitulos: CapituloConRubros[];
+};
+
+// ─── Budget vs Real comparison ────────────────────────────────────────────────
+
+export type ComparacionRubro = {
+  rubro_id:    string;
+  rubro_nombre: string;
+  presupuestado: number;
+  real:          number;
+  diferencia:    number;
+  desviacion_pct: number;
+};
+
+export type ComparacionPresupuesto = {
+  presupuesto_id:  string;
+  obra_nombre:     string;
+  total_presup:    number;
+  total_real:      number;
+  diferencia:      number;
+  desviacion_pct:  number;
+  rubros:          ComparacionRubro[];
 };
 
 // ─── Financial summary for a single obra ──────────────────────────────────────
@@ -59,9 +108,9 @@ export type ResumenFinanciero = {
   presupuesto_aprobado:  number;
   total_gastos:          number;
   total_certificado:     number;
-  resultado:             number;  // certified - spent
-  desviacion_vs_presup:  number;  // gastos - presupuesto (positive = over budget)
-  margen_porcentaje:     number;  // resultado / presupuesto * 100
+  resultado:             number;
+  desviacion_vs_presup:  number;
+  margen_porcentaje:     number;
 };
 
 // ─── Pagination ───────────────────────────────────────────────────────────────
@@ -73,11 +122,14 @@ export type PaginationState = {
 
 // ─── Generic API response wrapper ─────────────────────────────────────────────
 export type ActionResult<T = void> = {
-  data?:  T;
-  error?: string;
+  data?:    T;
+  error?:   string;
+  code?:    string;
+  success?: string;
 };
 
-// ─── Label helpers for enum values ───────────────────────────────────────────
+// ─── Label helpers ────────────────────────────────────────────────────────────
+
 export const ESTADO_OBRA_LABELS: Record<import('./supabase').EstadoObra, string> = {
   planning:  'Planificación',
   active:    'Activa',
@@ -115,4 +167,21 @@ export const ESTADO_CERT_LABELS: Record<import('./supabase').EstadoCert, string>
 export const TIPO_CERT_LABELS: Record<import('./supabase').TipoCert, string> = {
   normal:   'Normal',
   anticipo: 'Anticipo',
+};
+
+export const TIPO_EJECUCION_LABELS: Record<import('./supabase').TipoEjecucion, string> = {
+  propio:        'Propio',
+  subcontratado: 'Subcontratado',
+};
+
+export const TIPO_ITEM_LABELS: Record<import('./supabase').TipoItem, string> = {
+  material:  'Material',
+  mano_obra: 'Mano de Obra',
+  equipo:    'Equipo',
+  otro:      'Otro',
+};
+
+export const ESTADO_PRESUPUESTO_LABELS: Record<import('./supabase').EstadoPresupuesto, string> = {
+  borrador: 'Borrador',
+  aprobado: 'Aprobado',
 };
